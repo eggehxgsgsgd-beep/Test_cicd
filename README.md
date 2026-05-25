@@ -8,6 +8,11 @@
 - 一个 GitHub Actions 工作流：`.github/workflows/ci.yml`
 - 一个多平台 Release 工作流：`.github/workflows/release.yml`
 
+## 学习文档
+
+- [常用 GitHub CI/CD 指南](docs/github-cicd-guide.md)
+- [GitHub Actions CI/CD 语法解析](docs/github-actions-syntax.md)
+
 ## 你会学到什么
 
 1. 如何组织一个最小可运行的 Python 项目。
