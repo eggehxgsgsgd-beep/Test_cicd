@@ -1,0 +1,138 @@
+name: Python Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate release source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run lint
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest
+
+  build-python-package:
+    name: Build Python package
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build wheel and source package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[release]"
+          python -m build
+
+      - name: Upload Python package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+
+  build-executable:
+    name: Build executable for ${{ matrix.asset-name }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset-name: linux
+          - os: windows-latest
+            asset-name: windows
+          - os: macos-latest
+            asset-name: macos
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[release]"
+
+      - name: Build single-file executable
+        run: pyinstaller --onefile --name cicd-demo --specpath build src/cicd_demo/cli.py
+
+      - name: Smoke test executable
+        shell: pwsh
+        run: |
+          $exe = if ($env:RUNNER_OS -eq "Windows") { ".\dist\cicd-demo.exe" } else { "./dist/cicd-demo" }
+          $output = & $exe fib 7
+          if ($output -ne "13") {
+            throw "Unexpected executable output: $output"
+          }
+
+      - name: Package executable
+        shell: pwsh
+        run: |
+          $exe = if ($env:RUNNER_OS -eq "Windows") { ".\dist\cicd-demo.exe" } else { "./dist/cicd-demo" }
+          Compress-Archive -Path $exe -DestinationPath "cicd-demo-${{ matrix.asset-name }}.zip" -Force
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cicd-demo-${{ matrix.asset-name }}
+          path: cicd-demo-${{ matrix.asset-name }}.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - build-python-package
+      - build-executable
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/**/*

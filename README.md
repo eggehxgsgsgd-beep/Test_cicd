@@ -6,6 +6,7 @@
 - 一个命令行工具：`cicd-demo`
 - 一组自动化测试：`tests`
 - 一个 GitHub Actions 工作流：`.github/workflows/ci.yml`
+- 一个多平台 Release 工作流：`.github/workflows/release.yml`
 
 ## 你会学到什么
 
@@ -67,6 +68,86 @@ CI 会在 Python `3.10`、`3.11`、`3.12` 三个版本上执行：
 4. 运行 `ruff check .`。
 5. 运行 `pytest`。
 
+## GitHub Actions Release 如何触发
+
+Release 配置在 `.github/workflows/release.yml` 中。
+
+这个 workflow 用来模拟真实项目里常见的“打版本发布”：
+
+- 先检查代码：运行 `ruff check .` 和 `pytest`。
+- 再构建 Python 标准包：`.whl` 和 `.tar.gz`。
+- 再分别在 Linux、Windows、macOS 机器上构建可执行文件。
+- 最后创建 GitHub Release，并把所有产物上传到 Release 页面。
+
+### 发布一个版本
+
+假设你要发布 `v0.1.0`：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+推送 tag 后，GitHub Actions 会自动运行 `Python Release`。
+
+完成后打开仓库页面：
+
+```text
+GitHub 仓库 -> Releases
+```
+
+你应该能看到这些下载文件：
+
+- `cicd_demo-0.1.0-py3-none-any.whl`
+- `cicd_demo-0.1.0.tar.gz`
+- `cicd-demo-linux.zip`
+- `cicd-demo-windows.zip`
+- `cicd-demo-macos.zip`
+
+### 为什么要分别在不同系统打包
+
+Python 源码可以跨平台，但 PyInstaller 生成的可执行文件通常不能跨平台。
+
+也就是说：
+
+- Windows 上生成 `.exe`
+- Linux 上生成 Linux 可执行文件
+- macOS 上生成 macOS 可执行文件
+
+所以 Release workflow 使用了多个 runner：
+
+```yaml
+runs-on: ubuntu-latest
+runs-on: windows-latest
+runs-on: macos-latest
+```
+
+这就是你常见的“一个版本，多个机器下载包”。
+
+### Release 和 CI 的关系
+
+CI 主要回答：
+
+```text
+这次代码改动是否正确？
+```
+
+Release 主要回答：
+
+```text
+这个版本能不能打包并发布给别人下载？
+```
+
+当前 demo 的 Release 流程是：
+
+```text
+推送 tag
+  -> validate 检查代码
+  -> build-python-package 构建 Python 包
+  -> build-executable 构建多平台可执行文件
+  -> publish-release 创建 GitHub Release
+```
+
 ## 学习练习
 
 ### 练习 1：让 CI 通过
@@ -105,3 +186,4 @@ def add(left: float, right: float) -> float:
 3. 故意改坏一处代码，看 CI 怎么报错。
 4. 修复代码，再看 CI 变绿。
 5. 尝试新增一个函数和一条测试，理解“代码 + 测试 + CI”的关系。
+6. 创建 `v0.1.0` 这样的 tag，观察 Release 如何打包并上传多个平台产物。
